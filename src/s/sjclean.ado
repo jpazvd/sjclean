@@ -1,4 +1,4 @@
-*! version 1.0.1  13aug2026
+*! version 2.0.0  13aug2026
 *! sjclean -- rejoin and re-break a Stata log for LaTeX inclusion
 *!
 *! Author: Joao Pedro Azevedo, UNICEF <jpazevedo@unicef.org>
@@ -43,6 +43,19 @@
 *!     *.log.tex        read by LaTeX only        safe
 *!     *.log, *.smcl    read by scanners, humans  leave alone
 *!
+*! PATHS ARE STRIPPED BY DEFAULT. A log written on a real machine carries
+*! real machine paths -- a temp directory under a username, a UNC share, a
+*! cloud-sync folder -- and this command exists to prepare a log for
+*! PUBLICATION. So the directory part of every ABSOLUTE path is replaced with
+*! <path>/ and only the filename is kept; relative paths, which are safe and
+*! informative, are untouched. -noanonymize- turns it off.
+*!
+*! The default is the safe one on purpose: an author who forgets an option
+*! should get a safe artifact and slightly less information, never an unsafe
+*! one. Detection is STRUCTURAL -- rooted, plus at least one more separator --
+*! not a list of known roots, so it does not depend on anybody having guessed
+*! the right drive letters, usernames or cloud providers in advance.
+*!
 *! NOT A REPLACEMENT FOR sjlog. Use sjlog (from the Stata Journal's sjlatex)
 *! to capture the session: it escapes LaTeX specials, which a plain
 *! -log using x.log.tex- does not, so a session printing % or _ or a backslash
@@ -64,10 +77,9 @@ program define sjclean, rclass
         INDent(integer 4)               ///
         BREAKAnywhere                   ///
         NOSTATASyntax                   ///
-        ANONymize                       ///
+        NOANONymize                     ///
         PLACEholder(string)             ///
         REJoin                          ///
-        STRIPheader                     ///
         Replace                         ///
         SAVing(string)                  ///
         Quietly ]
@@ -106,9 +118,31 @@ program define sjclean, rclass
         local pad "`pad' "
     }
 
+    * ---- anonymisation is ON unless the caller turns it off ---------------
+    * The default is the safe one, and deliberately so. This command exists to
+    * prepare a log for PUBLICATION -- into a paper, a supplement, a package
+    * archive, a repository. A Stata log routinely carries
+    *
+    *     C:\Users\jsmith\AppData\Local\Temp\stata_worker_.../ST_73b0.tmp
+    *     \\10.0.4.21\share\project\data.dta
+    *     /Users/someone/Library/CloudStorage/OneDrive-ORG/team/secret.dta
+    *
+    * which leaks, in ascending order of seriousness, a username, a machine
+    * layout, and the topology of an internal network. An author who forgets
+    * an option should end up with a SAFE artifact and a slightly less
+    * informative one, not an unsafe artifact -- the failure mode of a default
+    * has to be the harmless direction.
+    *
+    * Only the DIRECTORY goes; the filename stays, because that is the part a
+    * reader needs and the part that leaks nothing. Relative paths are left
+    * entirely alone: they are safe and informative.
+    local anon = ("`noanonymize'" == "")
+
     if `"`placeholder'"' == "" local placeholder "<path>"
-    if "`anonymize'" == "" & `"`placeholder'"' != "<path>" {
-        di as error "sjclean: placeholder() has no effect without anonymize"
+    if !`anon' & `"`placeholder'"' != "<path>" {
+        di as error "sjclean: placeholder() and noanonymize contradict each other"
+        di as error "  placeholder() names the replacement text; noanonymize"
+        di as error "  means nothing is replaced. Drop one."
         exit 198
     }
 
@@ -160,7 +194,12 @@ program define sjclean, rclass
     * all, so the hazard is removed rather than escaped. Reading was already
     * held in Mata for this reason (see the note above); writing was not, which
     * is how the same bug reached a third release.
+    * Mata's fopen(...,"w") REFUSES an existing file -- r(602) -- where Stata's
+    * -file open ... write replace- overwrites, so the tempfile is removed
+    * first. _unlink() rather than unlink(): there is normally nothing there,
+    * and that is not an error.
     capture mata: fclose(sjc_wfh)
+    mata: (void) _unlink(st_local("work"))
     mata: sjc_wfh = fopen(st_local("work"), "w")
 
     * ---- pass one: rejoin, then re-break -------------------------------
@@ -183,7 +222,7 @@ program define sjclean, rclass
         * Anonymise FIRST, before any rejoining or measuring. A path that is
         * about to be shortened should be shortened before the width is
         * computed, or the line is broken around text that will not be there.
-        if "`anonymize'" != "" {
+        if `anon' {
             mata: sjc_hits = 0
             mata: st_local("line", sjc_anon(st_local("line"), st_local("placeholder")))
             mata: st_local("hits", strofreal(sjc_hits))
@@ -249,7 +288,7 @@ program define sjclean, rclass
             di as text "  rejoined  : `njoin' continuation(s)"
             di as text "  re-broken : `nbreak' at width `width'"
         }
-        if "`anonymize'" != "" {
+        if `anon' {
             di as text "  anonymised: `nanon' absolute path(s) -> `placeholder'"
         }
         di as text "  style     : `continuation' (indent `indent')"

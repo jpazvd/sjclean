@@ -1,4 +1,4 @@
-v 1.0.0
+v 2.0.0
 d 'SJCLEAN': Stata module to rejoin and re-break log files for LaTeX inclusion
 d 
 d sjclean tidies a Stata log that is about to be typeset. Stata breaks a log
@@ -7,6 +7,12 @@ d terminal width chosen before anybody knew what column the line would be
 d printed in. sjclean rejoins the logical line and re-breaks it at a width
 d you state, with the continuation shown as an indent, as Stata's marker, or
 d not at all.
+d 
+d Machine paths are anonymised by default: the directory part of every
+d absolute path is replaced by <path>/ and only the filename is kept, so a
+d published log does not disclose a username, a machine layout or the
+d topology of an internal network. Relative paths, which are safe and
+d informative, are untouched. noanonymize turns this off.
 d 
 d The right width is a property of the target environment and is measurable:
 d the shipped probes report 96 characters for stlog[beamer] and 80 for stlog

@@ -1,11 +1,12 @@
 {smcl}
-{* *! version 1.0.0  13aug2026}{...}
+{* *! version 2.0.0  13aug2026}{...}
 {vieweralsosee "[R] log" "help log"}{...}
 {vieweralsosee "[R] translate" "help translate"}{...}
 {viewerjumpto "Syntax" "sjclean##syntax"}{...}
 {viewerjumpto "Description" "sjclean##description"}{...}
 {viewerjumpto "Options" "sjclean##options"}{...}
 {viewerjumpto "Choosing a width" "sjclean##width"}{...}
+{viewerjumpto "Machine paths" "sjclean##anon"}{...}
 {viewerjumpto "Which file to run it on" "sjclean##target"}{...}
 {viewerjumpto "Before and after" "sjclean##example"}{...}
 {viewerjumpto "Stored results" "sjclean##results"}{...}
@@ -35,6 +36,10 @@
 {syntab:Continuation style}
 {synopt:{opt cont:inuation(style)}}{cmd:indent}, {cmd:marker} or {cmd:none}; default {cmd:indent}{p_end}
 {synopt:{opt ind:ent(#)}}spaces of indent under {cmd:continuation(indent)}; default {cmd:indent(4)}{p_end}
+
+{syntab:Machine paths}
+{synopt:{opt noanon:ymize}}{bf:keep} absolute paths; they are stripped by default{p_end}
+{synopt:{opt place:holder(string)}}text put in place of a stripped directory; default {cmd:<path>}{p_end}
 
 {syntab:Output}
 {synopt:{opt r:eplace}}overwrite {it:filename} in place{p_end}
@@ -111,6 +116,19 @@ tab at one; {cmd:examples/_tab_probe.tex} ships with its LaTeX log as the
 evidence.  So an indent is spaces, and {cmd:indent(4)} is the conventional tab
 stop.
 
+{dlgtab:Machine paths}
+
+{phang}
+{opt noanonymize} keeps absolute paths.  They are {bf:stripped by default} --
+see {help sjclean##anon:Machine paths} for what is removed and why the default
+runs that way.
+
+{phang}
+{opt placeholder(string)} sets the text written in place of a stripped
+directory.  Default {cmd:<path>}.  Specifying it together with
+{opt noanonymize} is an error rather than a silent no-op: the two options
+contradict each other.
+
 {dlgtab:Output}
 
 {phang}
@@ -148,6 +166,57 @@ number.
 Note that {opt continuation(indent)} adds {opt indent(#)} characters to every
 continued line, so {cmd:width(96) indent(4)} produces lines of up to 100.
 Leave headroom accordingly.
+
+
+
+{marker anon}{...}
+{title:Machine paths}
+
+{pstd}
+{bf:The directory part of every absolute path is replaced by default.}  A log
+written on a real machine carries real machine paths:
+
+{p 8 8 2}{res}. use "C:\Users\jsmith\AppData\Local\Temp\stata_worker_7505d\ST_73b0.tmp"{p_end}
+{p 8 8 2}{res}. merge 1:1 iso3 using "\10.0.4.21\research\admin\salaries.dta"{p_end}
+
+{pstd}
+which leaks, in ascending order of seriousness, a {it:username}, a {it:machine
+layout}, and the {it:topology of an internal network} -- server names, share
+names, IP addresses.  The last is a security matter rather than a tidiness one,
+and it is at its worst precisely when the log is stored somewhere shared.
+
+{pstd}
+The {bf:filename is kept}, because it is the part a reader needs and the part
+that leaks nothing:
+
+{p 8 8 2}{res}. use "<path>/ST_73b0.tmp"{p_end}
+{p 8 8 2}{res}. merge 1:1 iso3 using "<path>/salaries.dta"{p_end}
+
+{pstd}
+{bf:Relative paths are left alone.}  {cmd:qa/logs/test_data_stqa.log} tells a
+reader where to look in the repository and tells an attacker nothing.
+
+{pstd}
+{bf:Why it is the default.}  The failure mode of a default has to point in the
+harmless direction.  An author who forgets an option should end up with a safe
+artifact and slightly less information, never an unsafe one.  {opt noanonymize}
+keeps the paths when that is what you want.
+
+{pstd}
+{bf:Detection is structural, not a list of known roots.}  A token is an
+absolute path when it is {it:rooted} -- a drive letter followed by a separator,
+or a leading separator -- {it:and} carries at least one further separator, so
+that there is a directory to remove.  No usernames, hostnames, cloud providers
+or drive letters appear anywhere in the logic, so it cannot depend on anyone
+having guessed the right ones in advance.  The second condition is what keeps
+{cmd:///}, a bare {cmd:/} and control sequences from being mistaken for paths.
+
+{pstd}
+{bf:It is not a header stripper.}  Given Stata's log banner it removes the path
+and {it:leaves the timestamp}, which is a determinism concern rather than a
+disclosure one.  In the {cmd:sjlog} workflow the question does not arise:
+{cmd:quietly log using} suppresses the banner before {cmd:sjclean} sees the
+file.
 
 
 {marker target}{...}
@@ -235,6 +304,7 @@ Re-break for a narrower environment, keeping the familiar marker:
 {synopt:{cmd:r(read)}}lines read from the input{p_end}
 {synopt:{cmd:r(joined)}}continuation lines rejoined{p_end}
 {synopt:{cmd:r(broken)}}new breaks introduced at {opt width()}{p_end}
+{synopt:{cmd:r(anon)}}absolute paths whose directory was stripped{p_end}
 {p2colreset}{...}
 
 

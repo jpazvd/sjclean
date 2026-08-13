@@ -73,6 +73,8 @@ variant that restyles the marker without moving the break.
 | `quietly` | | suppress the summary |
 | `breakanywhere` | off | break at exactly `width()`, splitting words |
 | `nostatasyntax` | off | never add `///`, even to a command echo |
+| `noanonymize` | off | **keep** machine paths - anonymisation is on by default |
+| `placeholder(s)` | `<path>` | text that replaces a stripped directory |
 
 `replace` or `saving()` is required. A command that silently picked one would
 eventually pick wrong.
@@ -112,7 +114,77 @@ ordinary lines, neither carrying the `>` marker, so `rejoin` — which joins onl
 `>` lines — cannot cross one. The author's own break is preserved because it
 was never a candidate for joining.
 
-`r(read)`, `r(joined)` and `r(broken)` are returned.
+`r(read)`, `r(joined)`, `r(broken)` and `r(anon)` are returned.
+
+---
+
+## Machine paths are stripped by default
+
+A log written on a real machine carries real machine paths. This is what a
+session routinely leaves in a file you are about to publish:
+
+```
+. use "C:\Users\jsmith\AppData\Local\Temp\stata_worker_7505d64a54\ST_73b0.tmp"
+. merge 1:1 iso3 using "\10.0.4.21\research\admin\staff_salaries.dta"
+. save "/Users/jsmith/Library/CloudStorage/OneDrive-ORG/team/draft.dta"
+```
+
+That leaks, in ascending order of seriousness: a **username**, a **machine
+layout**, and the **topology of an internal network** - server names, share
+names, IP addresses. The last is a security matter rather than a tidiness one,
+and it is at its worst precisely when the log is stored somewhere shared.
+
+`sjclean` replaces the **directory** and keeps the **filename**:
+
+```
+. use "<path>/ST_73b0.tmp"
+. merge 1:1 iso3 using "<path>/staff_salaries.dta"
+. save "<path>/draft.dta"
+```
+
+The filename is the part a reader needs and the part that leaks nothing.
+
+**Relative paths are left alone**, because they are safe *and* informative.
+`qa/logs/test_data_stqa.log` tells a reader where to look in the repository and
+tells an attacker nothing, so it survives untouched.
+
+### Why it is the default
+
+The failure mode of a default has to point in the harmless direction. An author
+who forgets an option should end up with a **safe artifact and slightly less
+information**, never an unsafe one. Use `noanonymize` when you deliberately want
+the paths kept - a private debugging log, say:
+
+```stata
+sjclean using session.log.tex, width(96) rejoin replace noanonymize
+```
+
+`placeholder()` changes the replacement text (`placeholder("<REDACTED>")`), and
+`r(anon)` reports how many paths were stripped, so a build can assert on it.
+
+### Detection is structural, not a list
+
+There is no table of known roots. A token is treated as an absolute path when it
+is **rooted** - a drive letter followed by a separator, or a leading separator -
+**and** contains at least one further separator, so there is a directory to
+remove. No usernames, hostnames, cloud providers or drive letters appear
+anywhere in the logic, so it cannot depend on anyone having guessed the right
+ones in advance. The second condition is what keeps `///`, a bare `/`, and LaTeX
+control sequences like `\begin{stlog}` from being mistaken for paths.
+
+### What it does *not* do
+
+It is not a header stripper. Given Stata's log banner it removes the path and
+**leaves the timestamp**:
+
+```
+        log:  <path>/run.log
+  opened on:  13 Aug 2026, 10:44:06        <- survives
+```
+
+A timestamp is a *determinism* concern, not a disclosure one. In the `sjlog`
+workflow the question does not arise: `quietly log using` suppresses the banner
+before `sjclean` ever sees the file.
 
 ---
 
