@@ -1,43 +1,59 @@
-*! version 0.1.0  13aug2026
-*! sjclean -- tidy a Stata log for LaTeX inclusion, with the wrap width as a
-*! stated choice rather than an accident of c(linesize)
+*! version 1.0.0  13aug2026
+*! sjclean -- rejoin and re-break a Stata log for LaTeX inclusion
 *!
-*! WHY THIS EXISTS
+*! Author: Joao Pedro Azevedo, UNICEF <jpazevedo@unicef.org>
+*! License: MIT
 *!
-*! Five papers in this workspace print Stata sessions and do it three
-*! different ways: -sjlog- (StataQA, datalib, wbopendata), a direct log
-*! written straight to .log.tex (unicefData's generate_sjlogs_v2.do), and a
-*! post-hoc cleaner (data360's clean_logs.py, the only one in production that
-*! handles continuations). One of the three was built and never adopted. This
-*! command is the one implementation those five should share.
+*! THE PROBLEM
 *!
-*! THE PROBLEM IT SOLVES
-*!
-*! Stata breaks a log line at c(linesize) and marks the continuation with ">".
-*! The break is therefore an artifact of a terminal width, chosen before
-*! anybody knew what column the line would be typeset in. Three consequences:
-*! the ">" is clutter, the break lands mid-token, and the width has no
-*! relation to the page.
+*! Stata breaks a log line when it exceeds c(linesize) and marks the
+*! continuation with ">". That break is an artifact of a terminal width chosen
+*! before anybody knew what column the line would be typeset in, so it costs
+*! three things: the ">" is clutter, the break lands wherever the character
+*! count ran out, and the width bears no relation to the page. A -summarize-
+*! table wrapped at 60 is not a table any more.
 *!
 *! sjclean rejoins the logical line and re-breaks it at a width you state.
 *!
-*! WHAT WIDTH? Measured, not guessed. Rulers of known length typeset inside
-*! the article's own class (see _width_probe.tex, kept beside this file with
-*! its LaTeX log as evidence):
+*! CHOOSING A WIDTH -- it is measurable, not a matter of taste. The examples/
+*! directory ships _width_probe.tex, which typesets rulers of known length and
+*! reads LaTeX's own overfull reports back. In the Stata Journal class:
 *!
-*!     stlog[beamer]   96 fits; 104 overflows by 7.2pt   -> width(96)
-*!     stlog           80 fits; 88 overflows by 19.4pt   -> width(80)
+*!     stlog[beamer] (7pt)   96 fits; 104 overflows by 7.2pt
+*!     stlog         (8pt)   80 fits;  88 overflows by 19.4pt
 *!
-*! The two differ by sixteen characters, which is why the width is an option
-*! and not a constant.
+*! Sixteen characters apart, which is why width() is an option and not a
+*! constant. Run the probe in your own class before trusting either number.
 *!
-*! WHAT IT WILL NOT DO
+*! A LITERAL TAB DOES NOT WORK, and examples/_tab_probe.tex demonstrates it
+*! with its LaTeX log. Inside an alltt environment a 0x09 byte carries the
+*! catcode of ordinary whitespace and collapses to a SINGLE space, while four
+*! spaces render at four and eight at eight. So an indent is spaces, and
+*! indent(4) is the conventional tab stop.
 *!
-*! It does not touch a log that anything counts. stqa_scanlog matches a
-*! verdict token at column 1 after trimming, so rewriting a continuation
-*! marker in a file a scanner reads can manufacture a verdict out of line
-*! width -- a wrapped line whose continuation begins "PASS: " would be counted
-*! as a real one. Run this on the .log.tex, which only LaTeX reads.
+*! WHICH FILE TO RUN IT ON
+*!
+*! The typeset artifact, never a log that anything counts. Test frameworks
+*! that read verdicts out of logs typically match a token at column 1 after
+*! trimming whitespace -- so restyling a continuation in such a file can
+*! MANUFACTURE a verdict: a wrapped line whose continuation happens to begin
+*! "PASS:" becomes, once the ">" is replaced by spaces and the line trimmed,
+*! indistinguishable from a real one.
+*!
+*!     *.log.tex        read by LaTeX only        safe
+*!     *.log, *.smcl    read by scanners, humans  leave alone
+*!
+*! NOT A REPLACEMENT FOR sjlog. Use sjlog (from the Stata Journal's sjlatex)
+*! to capture the session: it escapes LaTeX specials, which a plain
+*! -log using x.log.tex- does not, so a session printing % or _ or a backslash
+*! survives. Use sjclean afterwards to set the width.
+*!
+*! WHY IT EXISTS. Five Stata packages by one author print sessions in their
+*! papers, and did it three different ways -- sjlog, a log written straight to
+*! a .log.tex, and a post-hoc Python cleaner. One was built and never adopted.
+*! Only one handled continuations, and it rejoined without re-breaking, which
+*! trades a visible marker for a line that overflows the column. This is the
+*! implementation those five should share.
 
 program define sjclean, rclass
     version 14.0
