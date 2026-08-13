@@ -64,6 +64,8 @@ program define sjclean, rclass
         INDent(integer 4)               ///
         BREAKAnywhere                   ///
         NOSTATASyntax                   ///
+        ANONymize                       ///
+        PLACEholder(string)             ///
         REJoin                          ///
         STRIPheader                     ///
         Replace                         ///
@@ -102,6 +104,12 @@ program define sjclean, rclass
     local pad ""
     forvalues i = 1/`indent' {
         local pad "`pad' "
+    }
+
+    if `"`placeholder'"' == "" local placeholder "<path>"
+    if "`anonymize'" == "" & `"`placeholder'"' != "<path>" {
+        di as error "sjclean: placeholder() has no effect without anonymize"
+        exit 198
     }
 
     if `width' < 20 {
@@ -143,9 +151,21 @@ program define sjclean, rclass
 
     mata: sjc_pending = ""
 
+    local nanon 0
+
     file read `rf' line
     while r(eof) == 0 {
         local nread = `nread' + 1
+
+        * Anonymise FIRST, before any rejoining or measuring. A path that is
+        * about to be shortened should be shortened before the width is
+        * computed, or the line is broken around text that will not be there.
+        if "`anonymize'" != "" {
+            mata: sjc_hits = 0
+            mata: st_local("line", sjc_anon(st_local("line"), st_local("placeholder")))
+            mata: st_local("hits", strofreal(sjc_hits))
+            local nanon = `nanon' + `hits'
+        }
 
         mata: sjc_iscont = (substr(st_local("line"), 1, 2) == "> ")
 
@@ -206,6 +226,9 @@ program define sjclean, rclass
             di as text "  rejoined  : `njoin' continuation(s)"
             di as text "  re-broken : `nbreak' at width `width'"
         }
+        if "`anonymize'" != "" {
+            di as text "  anonymised: `nanon' absolute path(s) -> `placeholder'"
+        }
         di as text "  style     : `continuation' (indent `indent')"
         di as text "  written to: `out'"
     }
@@ -213,6 +236,7 @@ program define sjclean, rclass
     return scalar read   = `nread'
     return scalar joined = `njoin'
     return scalar broken = `nbreak'
+    return scalar anon   = `nanon'
 end
 
 
@@ -310,4 +334,133 @@ program define sjc_emit, rclass
     mata: sjc_pending = ""
     return scalar pieces = `pieces'
     return scalar split  = cond("`nsplit'" == "", 0, 1)
+end
+
+
+* ----------------------------------------------------------------------
+* sjc_anon -- replace the DIRECTORY part of every absolute path in a line.
+*
+* Written in Mata for the usual reason: a log line carries arbitrary text and
+* holding one in a Stata local re-parses it as macro syntax the first time it
+* contains an unbalanced quote.
+*
+* Deliberately conservative. It fires only on the four rooted forms below, so
+* a relative path -- which is safe and informative -- survives untouched, and
+* so does ordinary prose containing a colon or a slash.
+* ----------------------------------------------------------------------
+* Drop first, so re-running this file in a live session -- which is what
+* -net install, replace- and any -run- during development both do -- does not
+* fail with "sjc_isroot() already exists". Mata functions outlive the ado.
+capture mata: mata drop sjc_isroot()
+capture mata: mata drop sjc_anon()
+
+version 14.0
+mata:
+mata set matastrict off
+
+real scalar sjc_issep(string scalar c)
+{
+    return(c == "/" | c == char(92))
+}
+
+// Is the token starting at i an absolute path? Structural, not a list of
+// known roots: rooted, and carrying at least one more separator so that
+// there is a directory to remove. See the header note.
+real scalar sjc_isabs(string scalar s, real scalar i, real scalar jout)
+{
+    real scalar j, n, seps, rooted
+    string scalar c
+
+    n = strlen(s)
+    rooted = 0
+
+    // form 1: a drive letter, then a separator -- any letter, not a list
+    if (i + 2 <= n) {
+        c = substr(s, i, 1)
+        if (strpos("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz", c) > 0) {
+            if (substr(s, i + 1, 1) == ":" & sjc_issep(substr(s, i + 2, 1))) rooted = 1
+        }
+    }
+    // form 2: a LEADING separator -- covers POSIX absolute and UNC alike.
+    //
+    // "Leading" means at the start of a token, and the first version omitted
+    // that check: it fired on the "/" inside "qa/logs/x.log" and turned a
+    // RELATIVE path -- safe, informative, and none of this command's business
+    // -- into "qa<path>/x.log". A separator is a root only where a token
+    // begins.
+    if (!rooted & sjc_issep(substr(s, i, 1))) {
+        if (i == 1) rooted = 1
+        else {
+            c = substr(s, i - 1, 1)
+            if (c == " " | c == char(9) | c == char(34) | c == "'" | ///
+                c == "(" | c == "[" | c == ",") rooted = 1
+        }
+    }
+
+    if (!rooted) return(0)
+
+    // The token runs to the next delimiter. Count separators inside it.
+    j = i
+    seps = 0
+    while (j <= n) {
+        c = substr(s, j, 1)
+        if (c == " " | c == char(9) | c == char(34) | c == "'" | ///
+            c == ")" | c == "(" | c == "]" | c == "[" | c == ",") break
+        if (sjc_issep(c)) seps++
+        j++
+    }
+
+    // Rule 3: a root and nothing else is not a path worth stripping, and a
+    // run of separators ("///") is not a path at all.
+    if (seps < 2) return(0)
+    if (j - i == seps) return(0)
+
+    st_numscalar("__sjc_end", j)
+    return(1)
+}
+
+string scalar sjc_anon(string scalar raw, string scalar ph)
+{
+    real scalar i, j, k, lastsep, n
+    string scalar out, tail
+
+    // sjc_hits is set by the caller and read back afterwards. A Mata function
+    // does not see a global unless it says so, and the first version did not
+    // -- r(3200), conformability error, on the first line carrying a path.
+    external real scalar sjc_hits
+
+    out = ""
+    i = 1
+    n = strlen(raw)
+
+    while (i <= n) {
+        if (!sjc_isabs(raw, i, 0)) {
+            out = out + substr(raw, i, 1)
+            i++
+            continue
+        }
+
+        j = st_numscalar("__sjc_end")
+
+        // Keep whatever follows the LAST separator -- the filename, which is
+        // the part a reader needs and the part that leaks nothing.
+        lastsep = 0
+        for (k = i; k < j; k++) {
+            if (sjc_issep(substr(raw, k, 1))) lastsep = k
+        }
+
+        if (lastsep > 0 & lastsep < j - 1) {
+            tail = substr(raw, lastsep + 1, j - lastsep - 1)
+            out = out + ph + "/" + tail
+        }
+        else {
+            out = out + ph
+        }
+
+        sjc_hits = sjc_hits + 1
+        i = j
+    }
+
+    return(out)
+}
 end
