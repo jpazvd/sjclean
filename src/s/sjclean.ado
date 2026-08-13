@@ -1,4 +1,4 @@
-*! version 2.1.0  13aug2026
+*! version 2.1.1  13aug2026
 *! sjclean -- rejoin and re-break a Stata log for LaTeX inclusion
 *!
 *! Author: Joao Pedro Azevedo, UNICEF <jpazevedo@unicef.org>
@@ -473,7 +473,7 @@ real scalar sjc_isfname(string scalar s)
 // there is a directory to remove. See the header note.
 real scalar sjc_isabs(string scalar s, real scalar i, real scalar jout)
 {
-    real scalar j, n, seps, rooted
+    real scalar j, k, n, seps, rooted
     string scalar c
 
     n = strlen(s)
@@ -507,6 +507,33 @@ real scalar sjc_isabs(string scalar s, real scalar i, real scalar jout)
     }
 
     if (!rooted) return(0)
+
+    // ---- a BARE separator root must be followed by a real segment --------
+    //
+    // Counting separators is not enough on its own, and this is where 2.1.0
+    // broke a build. sjlog escapes "%%" to "\%\%", which carries TWO
+    // backslashes -- so "\%\%EXCERPT-BEGIN sample", the marker the paper's
+    // build slices excerpts on, satisfied the two-separator test, was read as
+    // a path, and came out as "<path> sample". Every excerpt then failed to
+    // find its own markers.
+    //
+    // A real path segment starts with a LETTER or a DIGIT: /home, /Users,
+    // \server, Z:/datalib. A LaTeX escape does not: "\%", "\_", "\&". So
+    // consecutive separators are skipped -- that is the UNC "\server" form --
+    // and the first character of the first segment must be alphanumeric.
+    //
+    // Deliberately narrow: "." and "_" are NOT accepted as segment starts,
+    // because "\_\_000000" is how a Stata tempvar reaches a typeset log and
+    // it is not a path either.
+    if (rooted == 2) {
+        k = i
+        while (k <= n & sjc_issep(substr(s, k, 1))) k++
+        if (k > n) return(0)
+        c = substr(s, k, 1)
+        if (strpos("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789", c) == 0) {
+            return(0)
+        }
+    }
 
     // The token runs to the next delimiter. Count separators inside it.
     j = i

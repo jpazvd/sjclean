@@ -1,5 +1,5 @@
 {smcl}
-{* *! version 2.1.0  13aug2026}{...}
+{* *! version 2.1.1  13aug2026}{...}
 {vieweralsosee "[R] log" "help log"}{...}
 {vieweralsosee "[R] translate" "help translate"}{...}
 {viewerjumpto "Syntax" "sjclean##syntax"}{...}

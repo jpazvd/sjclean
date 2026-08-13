@@ -1,4 +1,4 @@
-v 2.1.0
+v 2.1.1
 d 'SJCLEAN': Stata module to rejoin and re-break log files for LaTeX inclusion
 d 
 d sjclean tidies a Stata log that is about to be typeset. Stata breaks a log

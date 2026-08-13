@@ -317,6 +317,11 @@ file write `fh' `"F qa/logs/test_data_stqa.log"' _n
 file write `fh' `"G the /// continuation and a bare / slash"' _n
 file write `fh' `"H \begin{stlog} and \smallskip"' _n
 file write `fh' `"I C:\projects\study2024\analysis\master.do"' _n
+* LaTeX escapes, which sjlog writes and which are NOT paths. "%%" becomes
+* "\%\%" -- two backslashes, enough to pass a naive separator count -- and
+* 2.1.0 turned the paper build's own excerpt markers into "<path>".
+file write `fh' `"J \%\%EXCERPT-BEGIN sample"' _n
+file write `fh' `"K a tempvar \_\_000000 and an escaped \& ampersand"' _n
 file close `fh'
 capture sjclean using "`pin'", width(400) rejoin saving("`pout'") quietly
 
@@ -342,6 +347,13 @@ mata: st_local("r3", strofreal(sjo_has(st_local("pout"), "\begin{stlog}")))
 mata: st_local("r4", strofreal(sjo_has(st_local("pout"), "\smallskip")))
 local ok = (`r1' & `r2' & `r3' & `r4')
 sjo_check `ok' "relative paths, ///, and LaTeX control sequences are left alone"
+
+* The escapes sjlog actually emits. A real path segment starts with a letter
+* or a digit; "\%" and "\_" do not, however many backslashes precede them.
+mata: st_local("s1", strofreal(sjo_has(st_local("pout"), "EXCERPT-BEGIN sample")))
+mata: st_local("s2", strofreal(sjo_has(st_local("pout"), "000000")))
+local ok = (`s1' & `s2')
+sjo_check `ok' "LaTeX escapes (\%\%, \_\_) survive -- two backslashes do not make a path"
 
 di as text ""
 if "$sjo_fail" == "1" {
