@@ -355,6 +355,42 @@ mata: st_local("s2", strofreal(sjo_has(st_local("pout"), "000000")))
 local ok = (`s1' & `s2')
 sjo_check `ok' "LaTeX escapes (\%\%, \_\_) survive -- two backslashes do not make a path"
 
+
+* =====================================================================
+* A source "///" must not survive into the middle of a joined command.
+*
+* Stata marks the continuation of a "///" command with ">", exactly as it
+* marks a linesize wrap. Until 2.2.0 rejoin glued the two and left the
+* author's "///" mid-line -- and everything after "///" is a COMMENT, so the
+* printed command silently lost its tail. The session on the page and the
+* session that ran were different programs.
+* =====================================================================
+tempfile cin cout
+file open `fh' using "`cin'", write text replace
+file write `fh' `". capture noisily stqa_assert `nunion' == 2225, ///"' _n
+file write `fh' `">         msg("union is missing for 368 respondents")"' _n
+file close `fh'
+capture sjclean using "`cin'", width(400) rejoin saving("`cout'") quietly
+
+* Joined onto one line, and the msg() must still be part of the COMMAND --
+* which means no "///" may stand between the comma and it.
+mata: st_local("nrow", strofreal(rows(cat(st_local("cout")))))
+mata: st_local("cline", cat(st_local("cout"))[1])
+mata: st_local("mid", strofreal(strpos(st_local("cline"), "///") > 0))
+mata: st_local("hasmsg", strofreal(strpos(st_local("cline"), "msg(") > 0))
+local ok = (`nrow' == 1 & `mid' == 0 & `hasmsg' == 1)
+sjo_check `ok' "a source /// is dropped when its two lines are joined, keeping msg() in the command"
+
+* At a width that forces a break, the /// comes back -- because now there IS
+* a break for it to mark, and the command must stay runnable.
+tempfile cout2
+capture sjclean using "`cin'", width(48) rejoin saving("`cout2'") quietly
+mata: st_local("n2", strofreal(rows(cat(st_local("cout2")))))
+mata: st_local("c2", cat(st_local("cout2"))[1])
+mata: st_local("end2", strofreal(substr(strrtrim(st_local("c2")), strlen(strrtrim(st_local("c2"))) - 2, 3) == "///"))
+local ok = (`n2' > 1 & `end2' == 1)
+sjo_check `ok' "and a /// is re-added at a break sjclean introduces, at the END of the line"
+
 di as text ""
 if "$sjo_fail" == "1" {
     di as error "test_options: FAILURES ABOVE"

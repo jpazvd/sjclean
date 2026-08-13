@@ -109,10 +109,26 @@ in front of it, which is a property of the log format rather than a guess. The
 four characters are budgeted out of the width so the marker cannot itself push
 the line over. `nostatasyntax` turns this off.
 
-A `///` that was in the *source* needs no handling: Stata echoes it as two
-ordinary lines, neither carrying the `>` marker, so `rejoin` — which joins only
-`>` lines — cannot cross one. The author's own break is preserved because it
-was never a candidate for joining.
+### A `///` in the source is removed when its lines are joined
+
+**Stata marks the continuation of a `///` command with `>`, exactly as it marks
+a linesize wrap.** (Earlier versions of this README claimed otherwise, and
+`sjclean` behaved accordingly — see below.) So `rejoin` does cross a source
+`///`, and it must, or the logical line could never be reassembled.
+
+What it must *not* do is carry the `///` into the middle of the joined command.
+Everything after `///` on a line is a comment, so this:
+
+```
+. capture noisily stqa_assert `nunion' == 2225, ///        msg("union is ...
+```
+
+is an assertion with **no `msg()`** — the printed session and the session that
+actually ran are different programs, and nothing errors to tell you.
+
+Since 2.2.0 the `///` is dropped at the join (it marked a break that no longer
+exists) and re-added at whatever break `sjclean` itself introduces, so the
+printed command stays runnable either way.
 
 `r(read)`, `r(joined)`, `r(broken)` and `r(anon)` are returned.
 

@@ -1,4 +1,4 @@
-*! version 2.1.1  13aug2026
+*! version 2.2.0  13aug2026
 *! sjclean -- rejoin and re-break a Stata log for LaTeX inclusion
 *!
 *! Author: Joao Pedro Azevedo, UNICEF <jpazevedo@unicef.org>
@@ -235,7 +235,7 @@ program define sjclean, rclass
             mata: st_local("iscont", strofreal(sjc_iscont))
             if `iscont' {
                 * glue this fragment onto the held line and read on
-                mata: sjc_pending = sjc_pending + substr(st_local("line"), 3, .)
+                mata: sjc_pending = sjc_join(sjc_pending, substr(st_local("line"), 3, .))
                 local njoin = `njoin' + 1
                 file read `rf' line
                 continue
@@ -422,11 +422,57 @@ end
 * fail with "sjc_isroot() already exists". Mata functions outlive the ado.
 capture mata: mata drop sjc_isroot()
 capture mata: mata drop sjc_isfname()
+capture mata: mata drop sjc_join()
 capture mata: mata drop sjc_anon()
 
 version 14.0
 mata:
 mata set matastrict off
+
+// Glue a continuation fragment onto the line being assembled.
+//
+// THE BUG THIS CLOSES, and it produced code that was WRONG rather than merely
+// ugly. Stata marks the continuation of a "///" command with ">", exactly as
+// it marks a linesize wrap -- so this:
+//
+//     capture noisily stqa_assert `nunion' == 2225, ///
+//         msg("union is missing for 368 respondents...")
+//
+// is echoed as a line and a ">" line, rejoin glued them, and the author's
+// "///" ended up mid-command:
+//
+//     . capture noisily stqa_assert `nunion' == 2225, ///        msg("union ...
+//
+// Everything after "///" on a line is a COMMENT. A reader who pasted that got
+// an assertion with no msg() and no error -- the printed session and the
+// session that ran were different programs.
+//
+// sjclean's own README asserted this could not happen, on the theory that a
+// source "///" produces two ordinary lines with no ">" marker. It does not.
+//
+// So a "///" at the end of the held text is dropped before the join: it was a
+// marker for the break being removed, and once the lines are one it has no
+// referent. sjclean re-adds "///" at whatever breaks it introduces, so the
+// printed command stays runnable.
+//
+// The fragment is also left-trimmed and joined with a single space. A "///"
+// continuation carries the SOURCE indentation after the ">" marker, which
+// would otherwise land in the middle of the line as a run of spaces; a
+// linesize wrap has no such indentation, so verbatim joining is kept for it.
+string scalar sjc_join(string scalar pending, string scalar frag)
+{
+    string scalar p, f
+
+    p = strrtrim(pending)
+    if (strlen(p) >= 3 & substr(p, strlen(p) - 2, 3) == "///") {
+        p = strrtrim(substr(p, 1, strlen(p) - 3))
+        f = strltrim(frag)
+        if (p == "") return(f)
+        if (f == "") return(p)
+        return(p + " " + f)
+    }
+    return(pending + frag)
+}
 
 real scalar sjc_issep(string scalar c)
 {
