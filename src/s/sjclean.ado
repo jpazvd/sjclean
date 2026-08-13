@@ -1,4 +1,4 @@
-*! version 1.0.0  13aug2026
+*! version 1.0.1  13aug2026
 *! sjclean -- rejoin and re-break a Stata log for LaTeX inclusion
 *!
 *! Author: Joao Pedro Azevedo, UNICEF <jpazevedo@unicef.org>
@@ -133,21 +133,44 @@ program define sjclean, rclass
     }
 
     tempfile work
-    tempname rf wf
+    tempname rf
 
     local nread 0
     local njoin 0
     local nbreak 0
 
     file open `rf' using `"`using'"', read text
-    file open `wf' using "`work'", write text replace
+
+    * ---- the OUTPUT handle belongs to Mata, and this is not a preference --
+    *
+    * A chunk of arbitrary session text cannot be written through
+    *
+    *     file write `wf' `"`macval(chunk)'"' _n
+    *
+    * because -macval- stops macro EXPANSION and does nothing about a quote.
+    * A chunk carrying the two characters "' -- which any echoed command using
+    * Stata's own compound quotes carries, e.g.
+    *
+    *     stqa_assert `"`got'"' == "alpha", msg(...)
+    *
+    * -- closes the compound quote early, and everything after it is parsed as
+    * further arguments to -file write-. rc 198, on that line only.
+    *
+    * Mata's fput() takes the string by value and has no parsing surface at
+    * all, so the hazard is removed rather than escaped. Reading was already
+    * held in Mata for this reason (see the note above); writing was not, which
+    * is how the same bug reached a third release.
+    capture mata: fclose(sjc_wfh)
+    mata: sjc_wfh = fopen(st_local("work"), "w")
 
     * ---- pass one: rejoin, then re-break -------------------------------
     *
-    * Held in Mata throughout. A log line carries arbitrary session text
-    * including the quotation marks in assertion diagnostics, and a local
-    * holding one is re-parsed as macro syntax on every reference -- r(132),
-    * "too few quotes". That bug has shipped twice in this workspace already.
+    * Held in Mata throughout, in BOTH directions. A log line carries
+    * arbitrary session text including the quotation marks in assertion
+    * diagnostics, and a local holding one is re-parsed as macro syntax on
+    * every reference -- r(132) reading, r(198) writing. That bug has now
+    * shipped three times in this workspace, each time because one half of the
+    * round trip was moved to Mata and the other half was left behind.
 
     mata: sjc_pending = ""
 
@@ -181,7 +204,7 @@ program define sjclean, rclass
             * a non-continuation: flush what was held, then hold this one
             mata: st_local("has", strofreal(strlen(sjc_pending) > 0))
             if `has' {
-                sjc_emit `wf' `width' `"`continuation'"' `"`pad'"' ///
+                sjc_emit `width' `"`continuation'"' `"`pad'"' ///
                     "`breakanywhere'" "`nostatasyntax'"
                 local nbreak = `nbreak' + r(pieces) - 1
             }
@@ -198,7 +221,7 @@ program define sjclean, rclass
                     mata: st_local("line", substr(st_local("line"), 3, .))
                 }
             }
-            file write `wf' `"`macval(line)'"' _n
+            mata: fput(sjc_wfh, st_local("line"))
         }
 
         file read `rf' line
@@ -208,14 +231,14 @@ program define sjclean, rclass
     if "`rejoin'" != "" {
         mata: st_local("has", strofreal(strlen(sjc_pending) > 0))
         if `has' {
-            sjc_emit `wf' `width' `"`continuation'"' `"`pad'"' ///
+            sjc_emit `width' `"`continuation'"' `"`pad'"' ///
                     "`breakanywhere'" "`nostatasyntax'"
             local nbreak = `nbreak' + r(pieces) - 1
         }
     }
 
     file close `rf'
-    file close `wf'
+    mata: fclose(sjc_wfh)
 
     copy "`work'" `"`out'"', replace
 
@@ -262,7 +285,7 @@ end
 * do not carry it.
 * ---------------------------------------------------------------------
 program define sjc_emit, rclass
-    args wf width style pad anywhere nostata
+    args width style pad anywhere nostata
 
     local pieces 0
     mata: st_local("n", strofreal(strlen(sjc_pending)))
@@ -309,8 +332,10 @@ program define sjc_emit, rclass
             }
         }
 
-        mata: st_local("chunk", substr(sjc_pending, strtoreal(st_local("pos")), strtoreal(st_local("take"))))
-        local pos = `pos' + `take'
+        * The chunk is never lifted into a Stata local -- it is sliced out of
+        * sjc_pending at the point of writing. Only the two offsets travel.
+        local pos0 = `pos'
+        local pos  = `pos' + `take'
 
         * Skip the space we broke on, so it does not open the next line.
         mata: st_local("atspace", strofreal(substr(sjc_pending, strtoreal(st_local("pos")), 1) == " "))
@@ -328,7 +353,12 @@ program define sjc_emit, rclass
         local suffix ""
         if `more' & `iscmd' local suffix " ///"
 
-        file write `wf' `"`prefix'`macval(chunk)'`suffix'"' _n
+        * prefix and suffix are the command's own strings -- spaces, "> " or
+        * " ///" -- so they are safe to pass through locals. The chunk is not,
+        * and does not.
+        mata: fput(sjc_wfh, st_local("prefix") +                            ///
+            substr(sjc_pending, strtoreal(st_local("pos0")),               ///
+                   strtoreal(st_local("take"))) + st_local("suffix"))
     }
 
     mata: sjc_pending = ""
