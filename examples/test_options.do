@@ -294,6 +294,55 @@ sjo_check `ok' "a missing input is refused with 601 (rc `=_rc')"
 capture sjclean using "`src0'", width(40) placeholder("<x>") noanonymize rejoin saving("`o1'")
 local ok = (_rc == 198)
 sjo_check `ok' "placeholder() with noanonymize is refused as contradictory (rc `=_rc')"
+
+* =====================================================================
+* The path table -- every shape, and what must happen to each.
+*
+* Written as a table because the rule has three interacting parts and each
+* was got wrong once: what counts as a root, how much evidence a root needs
+* before the token is a path, and whether the last segment is kept.
+*
+* 2.0.0 shipped two defects this table would have caught on day one:
+*   /home/jsmith  ->  <path>/jsmith   the USERNAME survived as a pseudo-file
+*   Z:/datalib    ->  untouched       a share root was left in an artifact
+* =====================================================================
+tempfile pin pout
+file open `fh' using "`pin'", write text replace
+file write `fh' `"A C:\Users\jsmith\AppData\Local\Temp\w\ST_1.tmp"' _n
+file write `fh' `"B /Users/jsmith/Library/CloudStorage/OneDrive-ORG/x.dta"' _n
+file write `fh' `"C Z:/datalib"' _n
+file write `fh' `"D /home/jsmith"' _n
+file write `fh' `"E C:/Windows"' _n
+file write `fh' `"F qa/logs/test_data_stqa.log"' _n
+file write `fh' `"G the /// continuation and a bare / slash"' _n
+file write `fh' `"H \begin{stlog} and \smallskip"' _n
+file write `fh' `"I C:\projects\study2024\analysis\master.do"' _n
+file close `fh'
+capture sjclean using "`pin'", width(400) rejoin saving("`pout'") quietly
+
+* A path naming a FILE keeps its filename.
+mata: st_local("p1", strofreal(sjo_has(st_local("pout"), "<path>/ST_1.tmp")))
+mata: st_local("p2", strofreal(sjo_has(st_local("pout"), "<path>/x.dta")))
+mata: st_local("p3", strofreal(sjo_has(st_local("pout"), "<path>/master.do")))
+local ok = (`p1' & `p2' & `p3')
+sjo_check `ok' "a path naming a file keeps the filename and loses the directory"
+
+* A path naming a DIRECTORY keeps nothing -- the last segment is a directory
+* name, and directory names are what leak.
+mata: st_local("q1", strofreal(sjo_has(st_local("pout"), "jsmith")))
+mata: st_local("q2", strofreal(sjo_has(st_local("pout"), "datalib")))
+mata: st_local("q3", strofreal(sjo_has(st_local("pout"), "Windows")))
+local ok = (`q1' == 0 & `q2' == 0 & `q3' == 0)
+sjo_check `ok' "a directory path is removed whole -- no username, share root or folder survives"
+
+* Relative paths and Stata/LaTeX syntax must come through untouched.
+mata: st_local("r1", strofreal(sjo_has(st_local("pout"), "qa/logs/test_data_stqa.log")))
+mata: st_local("r2", strofreal(sjo_has(st_local("pout"), "///")))
+mata: st_local("r3", strofreal(sjo_has(st_local("pout"), "\begin{stlog}")))
+mata: st_local("r4", strofreal(sjo_has(st_local("pout"), "\smallskip")))
+local ok = (`r1' & `r2' & `r3' & `r4')
+sjo_check `ok' "relative paths, ///, and LaTeX control sequences are left alone"
+
 di as text ""
 if "$sjo_fail" == "1" {
     di as error "test_options: FAILURES ABOVE"

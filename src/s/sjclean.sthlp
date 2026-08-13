@@ -1,5 +1,5 @@
 {smcl}
-{* *! version 2.0.0  13aug2026}{...}
+{* *! version 2.1.0  13aug2026}{...}
 {vieweralsosee "[R] log" "help log"}{...}
 {vieweralsosee "[R] translate" "help translate"}{...}
 {viewerjumpto "Syntax" "sjclean##syntax"}{...}
@@ -193,6 +193,15 @@ that leaks nothing:
 {p 8 8 2}{res}. merge 1:1 iso3 using "<path>/salaries.dta"{p_end}
 
 {pstd}
+{bf:A path naming a DIRECTORY loses everything}, because there the last segment
+is a directory name and directory names are exactly what leaks.
+{cmd:/home/jsmith} becomes {cmd:<path>}, not {cmd:<path>/jsmith}; so do
+{cmd:Z:/datalib} and {cmd:C:/Windows}.  A segment counts as a filename only if
+it carries an extension -- a dot that is not the last character, with at least
+one {it:letter} after it.  The letter is what stops {cmd:10.0.4.21} from
+reading as a file called {cmd:21}.
+
+{pstd}
 {bf:Relative paths are left alone.}  {cmd:qa/logs/test_data_stqa.log} tells a
 reader where to look in the repository and tells an attacker nothing.
 
@@ -205,11 +214,13 @@ keeps the paths when that is what you want.
 {pstd}
 {bf:Detection is structural, not a list of known roots.}  A token is an
 absolute path when it is {it:rooted} -- a drive letter followed by a separator,
-or a leading separator -- {it:and} carries at least one further separator, so
-that there is a directory to remove.  No usernames, hostnames, cloud providers
-or drive letters appear anywhere in the logic, so it cannot depend on anyone
-having guessed the right ones in advance.  The second condition is what keeps
-{cmd:///}, a bare {cmd:/} and control sequences from being mistaken for paths.
+or a leading separator -- and carries enough separators to be a path rather
+than something that merely looks like one.  A drive letter needs {bf:one}:
+nothing but a path is spelled {cmd:Z:/}.  A bare separator needs {bf:two},
+which is what keeps {cmd:egin}, {cmd:\smallskip}, {cmd:///} and a lone
+{cmd:/} intact.  No usernames, hostnames, cloud providers or drive letters
+appear anywhere in the logic, so it cannot depend on anyone having guessed the
+right ones in advance.
 
 {pstd}
 {bf:It is not a header stripper.}  Given Stata's log banner it removes the path

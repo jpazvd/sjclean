@@ -144,6 +144,20 @@ and it is at its worst precisely when the log is stored somewhere shared.
 
 The filename is the part a reader needs and the part that leaks nothing.
 
+**A path naming a *directory* loses everything**, because there the last
+segment is a directory name — and directory names are exactly what leaks:
+
+```
+/home/jsmith        ->  <path>          not <path>/jsmith
+Z:/datalib          ->  <path>
+C:/Windows          ->  <path>
+```
+
+A segment counts as a filename only if it carries an extension: a dot that is
+not the last character, with at least one **letter** after it. The letter is
+what stops `10.0.4.21` from reading as a file called `21` and putting an
+internal address back into the output.
+
 **Relative paths are left alone**, because they are safe *and* informative.
 `qa/logs/test_data_stqa.log` tells a reader where to look in the repository and
 tells an attacker nothing, so it survives untouched.

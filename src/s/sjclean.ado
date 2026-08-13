@@ -1,4 +1,4 @@
-*! version 2.0.0  13aug2026
+*! version 2.1.0  13aug2026
 *! sjclean -- rejoin and re-break a Stata log for LaTeX inclusion
 *!
 *! Author: Joao Pedro Azevedo, UNICEF <jpazevedo@unicef.org>
@@ -421,6 +421,7 @@ end
 * -net install, replace- and any -run- during development both do -- does not
 * fail with "sjc_isroot() already exists". Mata functions outlive the ado.
 capture mata: mata drop sjc_isroot()
+capture mata: mata drop sjc_isfname()
 capture mata: mata drop sjc_anon()
 
 version 14.0
@@ -430,6 +431,41 @@ mata set matastrict off
 real scalar sjc_issep(string scalar c)
 {
     return(c == "/" | c == char(92))
+}
+
+// Does this last segment look like a FILENAME rather than a directory?
+//
+// The command keeps the last segment of a stripped path because, for a path
+// naming a file, that is the part a reader needs and the part that leaks
+// nothing. For a path naming a DIRECTORY the same rule keeps precisely the
+// wrong thing: "/home/jsmith" became "<path>/jsmith" and published the
+// username the stripping existed to remove.
+//
+// So the segment is kept only when it carries an extension: a dot that is not
+// the last character, with at least one LETTER after it. The letter matters --
+// it is what stops "10.0.4.21" from reading as a file called "21" and putting
+// an internal IP address back into the output.
+//
+// Anything else is treated as a directory and goes with the rest. The cost is
+// losing "stata" from "/usr/local/bin/stata"; the alternative cost is a
+// username in a published paper.
+real scalar sjc_isfname(string scalar s)
+{
+    real scalar d, k, n
+    string scalar ext, c
+
+    d = strrpos(s, ".")
+    n = strlen(s)
+    if (d == 0 | d == n) return(0)
+
+    ext = substr(s, d + 1, n - d)
+    for (k = 1; k <= strlen(ext); k++) {
+        c = substr(ext, k, 1)
+        if (strpos("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz", c) > 0) {
+            return(1)
+        }
+    }
+    return(0)
 }
 
 // Is the token starting at i an absolute path? Structural, not a list of
@@ -442,6 +478,10 @@ real scalar sjc_isabs(string scalar s, real scalar i, real scalar jout)
 
     n = strlen(s)
     rooted = 0
+
+    // rooted is a KIND, not a flag: 1 = drive letter, 2 = bare separator.
+    // The two need different evidence before the token counts as a path, and
+    // conflating them is what left "Z:/datalib" and "C:/Windows" untouched.
 
     // form 1: a drive letter, then a separator -- any letter, not a list
     if (i + 2 <= n) {
@@ -458,11 +498,11 @@ real scalar sjc_isabs(string scalar s, real scalar i, real scalar jout)
     // -- into "qa<path>/x.log". A separator is a root only where a token
     // begins.
     if (!rooted & sjc_issep(substr(s, i, 1))) {
-        if (i == 1) rooted = 1
+        if (i == 1) rooted = 2
         else {
             c = substr(s, i - 1, 1)
             if (c == " " | c == char(9) | c == char(34) | c == "'" | ///
-                c == "(" | c == "[" | c == ",") rooted = 1
+                c == "(" | c == "[" | c == ",") rooted = 2
         }
     }
 
@@ -479,9 +519,20 @@ real scalar sjc_isabs(string scalar s, real scalar i, real scalar jout)
         j++
     }
 
-    // Rule 3: a root and nothing else is not a path worth stripping, and a
-    // run of separators ("///") is not a path at all.
-    if (seps < 2) return(0)
+    // How much evidence is needed depends on the ROOT KIND.
+    //
+    // A drive letter is unambiguous -- nothing but a path is spelled "Z:/" --
+    // so one separator is enough and "Z:/datalib" is a path. Requiring two
+    // left every root-plus-one-segment path untouched, which is how a share
+    // root reached a typeset artifact.
+    //
+    // A BARE separator is ambiguous, and this is where the second separator
+    // earns its place: "egin{stlog}" and "\smallskip" are rooted-looking by
+    // that test and are not paths. Two separators keeps LaTeX intact.
+    //
+    // Either way a run of separators ("///", Stata's own continuation) has no
+    // segments at all and is never a path.
+    if (seps < (rooted == 1 ? 1 : 2)) return(0)
     if (j - i == seps) return(0)
 
     st_numscalar("__sjc_end", j)
@@ -518,8 +569,13 @@ string scalar sjc_anon(string scalar raw, string scalar ph)
             if (sjc_issep(substr(raw, k, 1))) lastsep = k
         }
 
-        if (lastsep > 0 & lastsep < j - 1) {
-            tail = substr(raw, lastsep + 1, j - lastsep - 1)
+        // The last segment is kept only when it IS a filename. See
+        // sjc_isfname: for a directory path the last segment is a directory
+        // name, and directory names are the thing that leaks.
+        tail = ""
+        if (lastsep > 0 & lastsep < j - 1) tail = substr(raw, lastsep + 1, j - lastsep - 1)
+
+        if (tail != "" & sjc_isfname(tail)) {
             out = out + ph + "/" + tail
         }
         else {
