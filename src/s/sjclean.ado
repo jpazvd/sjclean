@@ -62,6 +62,8 @@ program define sjclean, rclass
         WIDth(integer 96)               ///
         CONTinuation(string)            ///
         INDent(integer 4)               ///
+        BREAKAnywhere                   ///
+        NOSTATASyntax                   ///
         REJoin                          ///
         STRIPheader                     ///
         Replace                         ///
@@ -159,7 +161,8 @@ program define sjclean, rclass
             * a non-continuation: flush what was held, then hold this one
             mata: st_local("has", strofreal(strlen(sjc_pending) > 0))
             if `has' {
-                sjc_emit `wf' `width' `"`continuation'"' `"`pad'"'
+                sjc_emit `wf' `width' `"`continuation'"' `"`pad'"' ///
+                    "`breakanywhere'" "`nostatasyntax'"
                 local nbreak = `nbreak' + r(pieces) - 1
             }
             mata: sjc_pending = st_local("line")
@@ -185,7 +188,8 @@ program define sjclean, rclass
     if "`rejoin'" != "" {
         mata: st_local("has", strofreal(strlen(sjc_pending) > 0))
         if `has' {
-            sjc_emit `wf' `width' `"`continuation'"' `"`pad'"'
+            sjc_emit `wf' `width' `"`continuation'"' `"`pad'"' ///
+                    "`breakanywhere'" "`nostatasyntax'"
             local nbreak = `nbreak' + r(pieces) - 1
         }
     }
@@ -213,16 +217,28 @@ end
 
 
 * ---------------------------------------------------------------------
-* Emit the held line, broken at `width', with continuations styled.
+* Emit the held line, broken at or before `width'.
 *
-* Breaks at the width and not at a word boundary, deliberately. This is code
-* and output, not prose: a break inside a token is what Stata itself does,
-* and moving the break to the previous space would silently change the column
-* a reader counts to. Where the content is a long quoted string the difference
-* is invisible; where it is a table, it matters.
+* WORD INTEGRITY. The break goes at the last space at or before the width, not
+* at the width itself. A word split across two lines is unreadable in prose
+* and unusable in code -- a reader cannot copy "something e / lse" and a
+* reader cannot copy half a variable name either. Only when a single token is
+* itself longer than the column is there no better answer, and then the token
+* is split rather than allowed to overflow; breakanywhere restores the old
+* behaviour for callers who want a hard column.
+*
+* STATA SYNTAX. A command echo that must be broken gets "///" at the break, so
+* the printed session remains code somebody can paste. Output lines get no
+* such marker: "///" in the middle of a -summarize- table would be nonsense.
+* A line already ending in "///" or ";" was broken by the AUTHOR, and that
+* break is preserved rather than rejoined away.
+*
+* An echoed command is recognised by the leading ". " Stata writes in front of
+* it. That is a convention of the log format rather than a guess: output lines
+* do not carry it.
 * ---------------------------------------------------------------------
 program define sjc_emit, rclass
-    args wf width style pad
+    args wf width style pad anywhere nostata
 
     local pieces 0
     mata: st_local("n", strofreal(strlen(sjc_pending)))
@@ -232,29 +248,66 @@ program define sjc_emit, rclass
         exit 0
     }
 
+    * Is this an echoed command rather than output?
+    mata: st_local("iscmd", strofreal(substr(strtrim(sjc_pending), 1, 2) == ". "))
+    if "`nostata'" != "" local iscmd 0
+
+    * A command that has to be split needs "///" at each break, which costs
+    * four characters of the column. Budget for them so the marker itself
+    * cannot push the line past the width.
+    local budget = `width'
+    if `iscmd' local budget = `width' - 4
+    if `budget' < 20 local budget = `width'
+
     local pos 1
     while `pos' <= `n' {
-        mata: st_local("chunk", substr(sjc_pending, strtoreal(st_local("pos")), strtoreal(st_local("width"))))
-        local pieces = `pieces' + 1
+        local remaining = `n' - `pos' + 1
 
-        if `pieces' == 1 {
-            file write `wf' `"`macval(chunk)'"' _n
+        if `remaining' <= `budget' {
+            local take = `remaining'
+        }
+        else if "`anywhere'" != "" {
+            local take = `budget'
         }
         else {
-            if `"`style'"' == "indent" {
-                file write `wf' `"`pad'`macval(chunk)'"' _n
-            }
-            else if `"`style'"' == "marker" {
-                file write `wf' `"> `macval(chunk)'"' _n
+            * Last space at or before the budget. strrpos() over the candidate
+            * window, so the search is one call rather than a loop.
+            mata: st_local("cand", substr(sjc_pending, strtoreal(st_local("pos")), strtoreal(st_local("budget")) + 1))
+            mata: st_local("sp", strofreal(strrpos(st_local("cand"), " ")))
+            if `sp' > 1 {
+                local take = `sp' - 1
             }
             else {
-                file write `wf' `"`macval(chunk)'"' _n
+                * One token wider than the column. Split it rather than let it
+                * overflow, and say so in the return so a caller can react.
+                local take = `budget'
+                local nsplit = 1
             }
         }
 
-        local pos = `pos' + `width'
+        mata: st_local("chunk", substr(sjc_pending, strtoreal(st_local("pos")), strtoreal(st_local("take"))))
+        local pos = `pos' + `take'
+
+        * Skip the space we broke on, so it does not open the next line.
+        mata: st_local("atspace", strofreal(substr(sjc_pending, strtoreal(st_local("pos")), 1) == " "))
+        if `atspace' local pos = `pos' + 1
+
+        local pieces = `pieces' + 1
+        local more = (`pos' <= `n')
+
+        local prefix ""
+        if `pieces' > 1 {
+            if `"`style'"' == "indent"      local prefix `"`pad'"'
+            else if `"`style'"' == "marker" local prefix "> "
+        }
+
+        local suffix ""
+        if `more' & `iscmd' local suffix " ///"
+
+        file write `wf' `"`prefix'`macval(chunk)'`suffix'"' _n
     }
 
     mata: sjc_pending = ""
     return scalar pieces = `pieces'
+    return scalar split  = cond("`nsplit'" == "", 0, 1)
 end

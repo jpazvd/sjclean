@@ -9,6 +9,7 @@
 {viewerjumpto "Which file to run it on" "sjclean##target"}{...}
 {viewerjumpto "Before and after" "sjclean##example"}{...}
 {viewerjumpto "Stored results" "sjclean##results"}{...}
+{viewerjumpto "Requirements" "sjclean##deps"}{...}
 {viewerjumpto "Author" "sjclean##author"}{...}
 {title:Title}
 
@@ -192,14 +193,20 @@ the middle of {cmd:output}.  After:
 {p 8 8 2}{cmd:. sjclean using ex.log.tex, width(96) rejoin replace}{p_end}
 
 {p 8 8 2}{it:after}{p_end}
-{p 8 8 2}{res}. stqa_assert `leaked' == 1, msg("noisily no longer overrides set output error; t{p_end}
-{p 8 8 2}{res}    he runner limitation may be liftable"){p_end}
+{p 8 8 2}{res}. stqa_assert `leaked' == 1, msg("noisily no longer overrides set output ///{p_end}
+{p 8 8 2}{res}    error; the runner limitation may be liftable"){p_end}
 
 {pstd}
-The line is now broken at 96 because that is what the column holds, and the
-continuation is indented rather than marked.  Nothing was added or removed:
-{cmd:sjclean} rejoined what Stata had split and split it again somewhere more
-useful.
+The line is now broken at 96 because that is what the column holds; the break
+falls at a {it:space} rather than mid-word; and because this is an echoed
+command rather than output, {cmd:///} was added so the printed session is still
+code a reader can paste.
+
+{pstd}
+{synoptset 20 tabbed}{...}
+{synopt:{opt breaka:nywhere}}break at exactly {opt width()}, splitting words{p_end}
+{synopt:{opt nostatas:yntax}}never add {cmd:///}, even to a command echo{p_end}
+{p2colreset}{...}
 
 {pstd}
 On one real document this took a set of typeset sessions from 200 continuation
@@ -229,6 +236,37 @@ Re-break for a narrower environment, keeping the familiar marker:
 {synopt:{cmd:r(joined)}}continuation lines rejoined{p_end}
 {synopt:{cmd:r(broken)}}new breaks introduced at {opt width()}{p_end}
 {p2colreset}{...}
+
+
+{marker deps}{...}
+{title:Requirements and dependencies}
+
+{pstd}
+{cmd:sjclean} itself needs nothing but Stata 14.  It reads a text file and
+writes a text file.
+
+{pstd}
+{bf:The workflow it belongs to needs the Stata Journal's editorial ados}, and
+that is where the dependency sits.  {cmd:sjlog} captures a session into a
+{cmd:.log.tex}; {cmd:statapress.cls}, {cmd:sj.sty}, {cmd:stata.sty} and
+{cmd:pagedims.sty} typeset it and are what the shipped width probes compile
+against.  All come from {cmd:sjlatex}:
+
+{p 8 8 2}
+{cmd:. net install sjlatex, from("http://www.stata-journal.com/production")}
+
+{pstd}
+The editorial package, its documentation and the author guidelines are at
+{browse "https://www.stata-journal.com/production/":www.stata-journal.com/production}.
+
+{pstd}
+{cmd:sjclean} is downstream of {cmd:sjlog} and not a replacement for it.  Use
+{cmd:sjlog} to capture --- it escapes LaTeX specials, which a plain
+{cmd:log using x.log.tex} does not, so a session printing {cmd:%} or {cmd:_} or
+a backslash survives --- then {cmd:sjclean} to set the width:
+
+{p 8 8 2}{cmd:. sjlog do myexample, replace}{p_end}
+{p 8 8 2}{cmd:. sjclean using myexample.log.tex, width(96) rejoin replace}{p_end}
 
 
 {marker author}{...}

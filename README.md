@@ -40,8 +40,8 @@ which is not a table any more.
 After `sjclean using ... , width(96) rejoin`:
 
 ```
-A considerably longer line that Stata will break because it exceeds the current linesize setting
-    .
+A considerably longer line that Stata will break because it exceeds the current linesize
+    setting.
 
     Variable |        Obs        Mean    Std. dev.       Min        Max
 -------------+---------------------------------------------------------
@@ -49,9 +49,9 @@ A considerably longer line that Stata will break because it exceeds the current 
          mpg |         74     21.2973    5.785503         12         41
 ```
 
-The table is whole, because at width 96 it fits on one line. Nothing was added
-or removed — the logical lines were reassembled and split again somewhere more
-useful.
+The table is whole, because at width 96 it fits on one line. The prose line
+breaks **at a space**, leaving `setting.` intact. Nothing was added or removed
+— the logical lines were reassembled and split again somewhere more useful.
 
 Run `examples/demo_before_after.do` to reproduce this, including a third
 variant that restyles the marker without moving the break.
@@ -71,6 +71,8 @@ variant that restyles the marker without moving the break.
 | `replace` | | overwrite the input |
 | `saving(f)` | | write elsewhere, leave the input alone |
 | `quietly` | | suppress the summary |
+| `breakanywhere` | off | break at exactly `width()`, splitting words |
+| `nostatasyntax` | off | never add `///`, even to a command echo |
 
 `replace` or `saving()` is required. A command that silently picked one would
 eventually pick wrong.
@@ -79,6 +81,36 @@ eventually pick wrong.
 the existing markers and the text is still broken at whatever `c(linesize)`
 was when the log was written — it just looks different. With it, the break is
 at *your* width.
+
+### Words are not split
+
+By default the break goes at the **last space at or before** the width, never
+at the width itself. A word cut in half is unreadable in prose and unusable in
+code — you cannot copy `something e` / `lse`, and you cannot copy half a
+variable name either. Only when a single token is itself wider than the column
+is there no better answer, and then it is split rather than allowed to
+overflow. `breakanywhere` restores a hard column for callers who want one.
+
+### Commands stay runnable
+
+A **command echo** that has to be broken gets `///` at the break, so the
+printed session is still code somebody can paste:
+
+```
+. stqa_assert (`vp' == `bp') & (`bp' == `op'), msg("a display mode changed ///
+    the number of PASS: tokens in the log")
+```
+
+Output lines get no such marker — `///` inside a `summarize` table would be
+nonsense. An echoed command is recognised by the leading `. ` that Stata writes
+in front of it, which is a property of the log format rather than a guess. The
+four characters are budgeted out of the width so the marker cannot itself push
+the line over. `nostatasyntax` turns this off.
+
+A `///` that was in the *source* needs no handling: Stata echoes it as two
+ordinary lines, neither carrying the `>` marker, so `rejoin` — which joins only
+`>` lines — cannot cross one. The author's own break is preserved because it
+was never a candidate for joining.
 
 `r(read)`, `r(joined)` and `r(broken)` are returned.
 
@@ -155,9 +187,40 @@ escapes LaTeX specials correctly, which a plain `log using x.log.tex` does not
 
 ---
 
-## Requirements
+## Requirements and dependencies
 
-Stata 14 or later. No dependencies.
+**`sjclean` itself needs nothing but Stata 14.** It reads a text file and
+writes a text file; there is no dependency to install for the command to run.
+
+**The workflow it belongs to needs the Stata Journal's editorial ados**, and
+that is where the real dependency sits:
+
+| you need | for | from |
+|---|---|---|
+| `sjlog` | capturing the session into a `.log.tex` | `sjlatex` |
+| `statapress.cls`, `sj.sty`, `stata.sty`, `pagedims.sty` | typesetting it, and running the probes | `sjlatex` |
+
+```stata
+net install sjlatex, from("http://www.stata-journal.com/production")
+```
+
+The full editorial package, its documentation, and the author guidelines are at
+**<https://www.stata-journal.com/production/>**.
+
+`sjclean` is deliberately downstream of `sjlog` rather than a replacement for
+it. Use `sjlog` to capture — it escapes LaTeX specials, which a plain
+`log using x.log.tex` does not, so a session printing `%`, `_`, `&` or a
+backslash survives — then `sjclean` to set the width:
+
+```stata
+sjlog do myexample, replace              // sjlatex: session -> myexample.log.tex
+sjclean using myexample.log.tex, ///     // sjclean:  set the width
+    width(96) rejoin replace
+```
+
+The two probes in `examples/` compile against the Stata Journal class, so they
+need `sjlatex` installed and its `.cls`/`.sty` files visible to LaTeX. Without
+them the probes will not build; `sjclean` will still work.
 
 ## Author
 
