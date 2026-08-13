@@ -1,0 +1,13 @@
+# LaTeX build products from the measurement probes. The .tex and .log are
+# committed on purpose -- a measurement without its evidence is a number the
+# next person has to re-derive -- but the rest is regenerable.
+*.aux
+*.out
+*.pdf
+*.synctex.gz
+*.fdb_latexmk
+*.fls
+*.tag
+*.cls
+*.sty
+*.bst

@@ -1,0 +1,65 @@
+% Measure how many monospace characters fit on one line of an stlog.
+%
+% The question "what width should sjclean wrap at" has a measured answer, not
+% a guessed one. This document prints rulers of known length inside the same
+% environment the article uses, and asks LaTeX to report every overfull box.
+% The last ruler that does NOT overflow is the capacity.
+%
+% Built with the article's own class and options so the answer applies to the
+% article rather than to a generic page.
+%
+% Usage:  lualatex -interaction=nonstopmode _width_probe.tex
+%         grep Overfull _width_probe.log
+
+\documentclass[bib]{statapress}
+\usepackage[crop,newcenter,frame]{pagedims}
+\usepackage{sj}
+\usepackage{stata}
+
+\begin{document}
+
+\noindent Each ruler below is exactly the stated number of characters wide.
+The largest one with no \texttt{Overfull} report in the log is the usable
+width of an \texttt{stlog[beamer]} line.
+
+\bigskip
+\noindent\textbf{80}
+\begin{stlog}[beamer]
+12345678901234567890123456789012345678901234567890123456789012345678901234567890
+\end{stlog}
+
+\noindent\textbf{88}
+\begin{stlog}[beamer]
+1234567890123456789012345678901234567890123456789012345678901234567890123456789012345678
+\end{stlog}
+
+\noindent\textbf{96}
+\begin{stlog}[beamer]
+123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456
+\end{stlog}
+
+\noindent\textbf{104}
+\begin{stlog}[beamer]
+12345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234
+\end{stlog}
+
+\noindent\textbf{112}
+\begin{stlog}[beamer]
+1234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012
+\end{stlog}
+
+\bigskip
+\noindent And the default (non-beamer) \texttt{stlog}, which the article uses
+nowhere but a reader might:
+
+\noindent\textbf{80}
+\begin{stlog}
+12345678901234567890123456789012345678901234567890123456789012345678901234567890
+\end{stlog}
+
+\noindent\textbf{88}
+\begin{stlog}
+1234567890123456789012345678901234567890123456789012345678901234567890123456789012345678
+\end{stlog}
+
+\end{document}

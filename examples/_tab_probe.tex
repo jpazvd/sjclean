@@ -1,0 +1,32 @@
+% Does a literal TAB character survive into an stlog, or collapse to a space?
+%
+% The question matters because "indent the continuation with a tab" has two
+% possible implementations -- write a real 0x09 byte, or write spaces that look
+% like one -- and they are not equivalent if LaTeX treats the byte as ordinary
+% whitespace.
+%
+% Line A carries a literal tab. Line B carries four spaces. If they render at
+% the same indent, the tab collapsed and spaces are the honest implementation.
+%
+% Usage:  lualatex -interaction=nonstopmode _tab_probe.tex
+%         then read the PDF, or compare the two lines' widths in the log.
+
+\documentclass[bib]{statapress}
+\usepackage[crop,newcenter,frame]{pagedims}
+\usepackage{sj}
+\usepackage{stata}
+
+\begin{document}
+
+\noindent Three continuation styles, same content. If A and B look identical,
+a literal tab is being treated as a single space and spaces are the honest
+way to write an indent.
+
+\begin{stlog}[beamer]
+X0 no indent at all -- baseline
+	A literal tab character precedes this line
+    B four literal spaces precede this line
+        C eight literal spaces precede this line
+\end{stlog}
+
+\end{document}

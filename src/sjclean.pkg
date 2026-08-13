@@ -1,0 +1,29 @@
+v 1.0.0
+d 'SJCLEAN': Stata module to rejoin and re-break log files for LaTeX inclusion
+d 
+d sjclean tidies a Stata log that is about to be typeset. Stata breaks a log
+d line at c(linesize) and marks the continuation with ">", an artifact of a
+d terminal width chosen before anybody knew what column the line would be
+d printed in. sjclean rejoins the logical line and re-breaks it at a width
+d you state, with the continuation shown as an indent, as Stata's marker, or
+d not at all.
+d 
+d The right width is a property of the target environment and is measurable:
+d the shipped probes report 96 characters for stlog[beamer] and 80 for stlog
+d in the Stata Journal class.
+d 
+d KW: logs
+d KW: LaTeX
+d KW: Stata Journal
+d KW: sjlatex
+d KW: reproducible research
+d 
+d Requires: Stata version 14
+d 
+d Distribution-Date: 20260813
+d 
+d Author: Joao Pedro Azevedo, UNICEF
+d Support: email jpazevedo@unicef.org
+d 
+f s/sjclean.ado
+f s/sjclean.sthlp
