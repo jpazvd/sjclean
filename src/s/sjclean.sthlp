@@ -1,5 +1,5 @@
 {smcl}
-{* *! version 2.2.0  13aug2026}{...}
+{* *! version 2.3.0  13aug2026}{...}
 {vieweralsosee "[R] log" "help log"}{...}
 {vieweralsosee "[R] translate" "help translate"}{...}
 {viewerjumpto "Syntax" "sjclean##syntax"}{...}
@@ -90,9 +90,20 @@ only looks different.
 {dlgtab:Continuation style}
 
 {phang}
-{opt continuation(indent)} writes {opt indent(#)} spaces at the start of each
-continued line.  The default.  It cannot overflow the column, and a reader can
-still see that the line continues.
+{opt continuation(indent)} puts each continued line {opt indent(#)} columns to
+the right of {it:where the code starts}, not of the left margin.  The default.
+
+{pmore}
+Two things stand in front of the code and both are counted: Stata's {cmd:. }
+echo prefix and the author's own indentation.  In
+
+{p 8 8 2}{res}.     capture noisily stqa_assert `nunion' == 2225, msg("union ///{p_end}
+{p 8 8 2}{res}          for 368 respondents"){p_end}
+
+{pmore}
+the code starts in column 7, so {cmd:indent(4)} continues in column 11.  An
+output line has no {cmd:. } prefix but may still be indented, and the same
+measurement applies.
 
 {phang}
 {opt continuation(marker)} keeps Stata's {cmd:>}.  Faithful to the raw log,
@@ -163,9 +174,9 @@ not a constant.  Run the probe in your own class before trusting either
 number.
 
 {pstd}
-Note that {opt continuation(indent)} adds {opt indent(#)} characters to every
-continued line, so {cmd:width(96) indent(4)} produces lines of up to 100.
-Leave headroom accordingly.
+{bf:No line exceeds} {opt width()}.  A continuation pays for its own indent out
+of the width rather than adding to it, so {cmd:width(96)} means 96 -- not 96
+plus the indent, as it did before 2.3.0.
 
 
 

@@ -1,4 +1,4 @@
-*! version 2.2.0  13aug2026
+*! version 2.3.0  13aug2026
 *! sjclean -- rejoin and re-break a Stata log for LaTeX inclusion
 *!
 *! Author: Joao Pedro Azevedo, UNICEF <jpazevedo@unicef.org>
@@ -341,12 +341,29 @@ program define sjc_emit, rclass
     * A command that has to be split needs "///" at each break, which costs
     * four characters of the column. Budget for them so the marker itself
     * cannot push the line past the width.
-    local budget = `width'
-    if `iscmd' local budget = `width' - 4
-    if `budget' < 20 local budget = `width'
+    * ---- the continuation indent is relative to the CODE ------------------
+    * indent() is a distance from where the code starts, not from column one,
+    * so a continuation lines up under the command it continues rather than
+    * under the left margin. sjc_lead measures what stands in front of the
+    * code -- Stata's ". " echo prefix and the author's own indentation -- and
+    * indent() is added to it.
+    mata: st_local("cpad", sjc_sp(sjc_lead(sjc_pending)) + st_local("pad"))
+    local plen = length(`"`cpad'"')
+    if `"`style'"' == "marker" local plen 2
+    if `"`style'"' == "none"   local plen 0
 
     local pos 1
     while `pos' <= `n' {
+        * The FIRST piece starts at column one and may use the whole width;
+        * every later piece pays for its own prefix out of that width, so no
+        * emitted line exceeds width(). Before this, the prefix was added on
+        * top and a continued line could run to width + indent -- which is how
+        * the documented ceiling became "96 plus 4" rather than 96.
+        local budget = `width'
+        if `pieces' > 0 local budget = `width' - `plen'
+        if `iscmd'      local budget = `budget' - 4
+        if `budget' < 20 local budget = 20
+
         local remaining = `n' - `pos' + 1
 
         if `remaining' <= `budget' {
@@ -385,7 +402,7 @@ program define sjc_emit, rclass
 
         local prefix ""
         if `pieces' > 1 {
-            if `"`style'"' == "indent"      local prefix `"`pad'"'
+            if `"`style'"' == "indent"      local prefix `"`cpad'"'
             else if `"`style'"' == "marker" local prefix "> "
         }
 
@@ -423,11 +440,56 @@ end
 capture mata: mata drop sjc_isroot()
 capture mata: mata drop sjc_isfname()
 capture mata: mata drop sjc_join()
+capture mata: mata drop sjc_lead()
+capture mata: mata drop sjc_sp()
 capture mata: mata drop sjc_anon()
 
 version 14.0
 mata:
 mata set matastrict off
+
+// How many characters stand before the CODE begins on this line?
+//
+// A continuation should line up under the code it continues, not under column
+// one, so the indent has to be measured from the line rather than fixed in
+// advance. Two things sit in front of the code and both count:
+//
+//     ".     capture noisily stqa_assert ..."
+//      ^^                                      Stata's echo prefix ". "
+//        ^^^^                                  the author's own indentation
+//
+// so the code starts in column 7 and a continuation indented by 4 belongs in
+// column 11. An output line has no ". " prefix but may still be indented --
+// a -summarize- table is -- and the same measurement serves.
+//
+// Tabs count as one character, which is what they render as inside alltt.
+// n spaces. Written out rather than reached for: strdup() is not available in
+// every Mata this command claims to support, and it failed on first use here.
+string scalar sjc_sp(real scalar n)
+{
+    string scalar s
+    real scalar i
+    s = ""
+    for (i = 1; i <= n; i++) s = s + " "
+    return(s)
+}
+
+real scalar sjc_lead(string scalar s)
+{
+    real scalar i, n
+    string scalar c
+
+    n = strlen(s)
+    i = 1
+    if (substr(s, 1, 2) == ". ") i = 3
+
+    while (i <= n) {
+        c = substr(s, i, 1)
+        if (c != " " & c != char(9)) break
+        i++
+    }
+    return(i - 1)
+}
 
 // Glue a continuation fragment onto the line being assembled.
 //

@@ -391,6 +391,54 @@ mata: st_local("end2", strofreal(substr(strrtrim(st_local("c2")), strlen(strrtri
 local ok = (`n2' > 1 & `end2' == 1)
 sjo_check `ok' "and a /// is re-added at a break sjclean introduces, at the END of the line"
 
+
+* =====================================================================
+* The continuation indent is measured from the CODE, not from column one.
+*
+* A continuation belongs under the command it continues. Two things stand in
+* front of that code and both count: Stata's ". " echo prefix and the author's
+* own indentation. indent(4) means four columns further right than wherever
+* the code starts -- not four columns from the margin.
+* =====================================================================
+tempfile iin iout
+file open `fh' using "`iin'", write text replace
+* code starts in column 7: ". " plus four spaces of source indent
+file write `fh' `".     capture noisily stqa_assert `nunion' == 2225, ///"' _n
+file write `fh' `">         msg("union is missing for 368 respondents, so the sample fell to `nunion'")"' _n
+* code starts in column 3: the ". " prefix alone
+file write `fh' `". di "a command at the left margin that is quite long and will certainly need breaking""' _n
+* an OUTPUT line, no ". " prefix, indented eight
+file write `fh' `"        an indented output line that is also long enough that it has to be broken here"' _n
+file close `fh'
+capture sjclean using "`iin'", width(70) rejoin saving("`iout'") quietly
+
+capture mata: mata drop sjo_ind()
+mata:
+real scalar sjo_ind(string scalar fn, real scalar row)
+{
+    string colvector v
+    string scalar s
+    real scalar i
+    v = cat(fn)
+    if (row > rows(v)) return(-1)
+    s = v[row]
+    for (i = 1; i <= strlen(s); i++) if (substr(s, i, 1) != " ") return(i)
+    return(-1)
+}
+end
+
+mata: st_local("i2", strofreal(sjo_ind(st_local("iout"), 2)))
+mata: st_local("i4", strofreal(sjo_ind(st_local("iout"), 4)))
+mata: st_local("i6", strofreal(sjo_ind(st_local("iout"), 6)))
+local ok = (`i2' == 11 & `i4' == 7 & `i6' == 13)
+sjo_check `ok' "the indent follows the code column: 7->11, 3->7, 9->13 (got `i2'/`i4'/`i6')"
+
+* And no line may exceed width(): the prefix is paid for out of the width
+* rather than added on top of it.
+mata: st_local("imax", strofreal(sjo_max(st_local("iout"))))
+local ok = (`imax' <= 70)
+sjo_check `ok' "no continued line exceeds width() -- the indent is paid out of it (`imax')"
+
 di as text ""
 if "$sjo_fail" == "1" {
     di as error "test_options: FAILURES ABOVE"

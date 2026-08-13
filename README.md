@@ -64,7 +64,7 @@ variant that restyles the marker without moving the break.
 |---|---|---|
 | `width(#)` | `96` | re-break at `#` characters |
 | `rejoin` | off | reassemble logical lines **before** re-breaking |
-| `continuation(indent)` | default | continued lines start with `indent()` spaces |
+| `continuation(indent)` | default | continued lines sit `indent()` columns right of where the code starts |
 | `continuation(marker)` | | keep Stata's `>` |
 | `continuation(none)` | | no marker at all |
 | `indent(#)` | `4` | spaces under `continuation(indent)`, 0–16 |
@@ -83,6 +83,22 @@ eventually pick wrong.
 the existing markers and the text is still broken at whatever `c(linesize)`
 was when the log was written — it just looks different. With it, the break is
 at *your* width.
+
+### The indent follows the code, not the margin
+
+A continuation belongs under the command it continues. Two things stand in
+front of that code and both are counted: Stata's `. ` echo prefix and the
+author's own indentation.
+
+```
+.     capture noisily stqa_assert `nunion' == 2225, msg("union is missing ///
+          for 368 respondents, so the sample fell to `nunion'")
+```
+
+The code starts in column 7 — `.`, a space, then four spaces of source indent —
+so `indent(4)` puts the continuation in column 11. An output line has no `. `
+prefix but may still be indented, and the same measurement applies: a
+`summarize` table indented eight continues at twelve.
 
 ### Words are not split
 
@@ -233,8 +249,9 @@ report is the capacity. In the Stata Journal class:
 Sixteen characters apart, which is why the width is an option and not a
 constant. Run the probe in your own class before trusting either number.
 
-`continuation(indent)` adds `indent()` characters to every continued line, so
-`width(96) indent(4)` produces lines of up to 100. Leave headroom.
+**No line exceeds `width()`.** A continuation pays for its own indent out of
+the width rather than adding to it, so `width(96)` means 96 — not 96 plus the
+indent, as it did before 2.3.0.
 
 ---
 
